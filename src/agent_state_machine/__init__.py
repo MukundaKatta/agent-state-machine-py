@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Callable
+from dataclasses import dataclass
+from typing import Callable
 
 
 @dataclass
@@ -85,7 +85,8 @@ class StateMachine:
         """
         ctx = context or {}
         candidates = [
-            t for t in self._transitions
+            t
+            for t in self._transitions
             if t.from_state == self._state and t.trigger == event
         ]
         if not candidates:
@@ -96,9 +97,7 @@ class StateMachine:
             if t.guard is None or t.guard(ctx):
                 prev = self._state
                 self._state = t.to_state
-                self._history.append(
-                    HistoryEntry(prev, t.to_state, event, dict(ctx))
-                )
+                self._history.append(HistoryEntry(prev, t.to_state, event, dict(ctx)))
                 if t.action:
                     t.action(ctx)
                 return True

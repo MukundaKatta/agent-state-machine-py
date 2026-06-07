@@ -1,10 +1,15 @@
 import pytest
-from agent_state_machine import StateMachine, InvalidTransitionError, HistoryEntry
+from agent_state_machine import (
+    StateMachine,
+    InvalidTransitionError,
+    Transition,
+)
 
 
 # ---------------------------------------------------------------------------
 # Basic transitions
 # ---------------------------------------------------------------------------
+
 
 def test_initial_state():
     sm = StateMachine("idle")
@@ -44,6 +49,7 @@ def test_trigger_wrong_state_raises():
 # Return value
 # ---------------------------------------------------------------------------
 
+
 def test_trigger_returns_true_on_success():
     sm = StateMachine("idle")
     sm.add_transition("idle", "running", "start")
@@ -62,25 +68,32 @@ def test_trigger_returns_false_when_guard_blocks():
 # Guards
 # ---------------------------------------------------------------------------
 
+
 def test_guard_allows_transition():
     sm = StateMachine("idle")
-    sm.add_transition("idle", "running", "start", guard=lambda ctx: ctx.get("ready", False))
+    sm.add_transition(
+        "idle", "running", "start", guard=lambda ctx: ctx.get("ready", False)
+    )
     sm.trigger("start", context={"ready": True})
     assert sm.state == "running"
 
 
 def test_guard_blocks_transition():
     sm = StateMachine("idle")
-    sm.add_transition("idle", "running", "start", guard=lambda ctx: ctx.get("ready", False))
+    sm.add_transition(
+        "idle", "running", "start", guard=lambda ctx: ctx.get("ready", False)
+    )
     sm.trigger("start", context={"ready": False})
     assert sm.state == "idle"
 
 
 def test_guard_receives_context():
     received = {}
+
     def guard(ctx):
         received.update(ctx)
         return True
+
     sm = StateMachine("a")
     sm.add_transition("a", "b", "go", guard=guard)
     sm.trigger("go", context={"key": "value"})
@@ -90,6 +103,7 @@ def test_guard_receives_context():
 # ---------------------------------------------------------------------------
 # Actions
 # ---------------------------------------------------------------------------
+
 
 def test_action_fires_on_transition():
     fired = []
@@ -102,9 +116,13 @@ def test_action_fires_on_transition():
 def test_action_not_fired_when_guard_blocks():
     fired = []
     sm = StateMachine("idle")
-    sm.add_transition("idle", "running", "start",
-                       guard=lambda ctx: False,
-                       action=lambda ctx: fired.append(True))
+    sm.add_transition(
+        "idle",
+        "running",
+        "start",
+        guard=lambda ctx: False,
+        action=lambda ctx: fired.append(True),
+    )
     sm.trigger("start")
     assert fired == []
 
@@ -120,6 +138,7 @@ def test_action_receives_context():
 # ---------------------------------------------------------------------------
 # History
 # ---------------------------------------------------------------------------
+
 
 def test_history_records_transition():
     sm = StateMachine("idle")
@@ -160,6 +179,7 @@ def test_history_is_snapshot():
 # can_trigger
 # ---------------------------------------------------------------------------
 
+
 def test_can_trigger_true():
     sm = StateMachine("idle")
     sm.add_transition("idle", "running", "start")
@@ -188,6 +208,7 @@ def test_can_trigger_respects_guard():
 # available_triggers
 # ---------------------------------------------------------------------------
 
+
 def test_available_triggers():
     sm = StateMachine("idle")
     sm.add_transition("idle", "a", "go")
@@ -200,6 +221,7 @@ def test_available_triggers():
 # ---------------------------------------------------------------------------
 # reset
 # ---------------------------------------------------------------------------
+
 
 def test_reset_clears_history():
     sm = StateMachine("a")
@@ -224,3 +246,61 @@ def test_reset_no_state_keeps_state():
     sm.reset()
     assert sm.state == "b"
     assert sm.history == []
+
+
+# ---------------------------------------------------------------------------
+# Multiple candidate transitions (guard fallthrough)
+# ---------------------------------------------------------------------------
+
+
+def test_first_matching_guard_wins():
+    sm = StateMachine("idle")
+    sm.add_transition("idle", "first", "go", guard=lambda ctx: True)
+    sm.add_transition("idle", "second", "go", guard=lambda ctx: True)
+    assert sm.trigger("go") is True
+    assert sm.state == "first"
+
+
+def test_falls_through_to_second_candidate_when_first_blocks():
+    sm = StateMachine("idle")
+    sm.add_transition("idle", "first", "go", guard=lambda ctx: False)
+    sm.add_transition("idle", "second", "go", guard=lambda ctx: True)
+    assert sm.trigger("go") is True
+    assert sm.state == "second"
+
+
+def test_all_candidates_blocked_returns_false_and_no_history():
+    sm = StateMachine("idle")
+    sm.add_transition("idle", "first", "go", guard=lambda ctx: False)
+    sm.add_transition("idle", "second", "go", guard=lambda ctx: False)
+    assert sm.trigger("go") is False
+    assert sm.state == "idle"
+    assert sm.history == []
+
+
+# ---------------------------------------------------------------------------
+# can_trigger with context
+# ---------------------------------------------------------------------------
+
+
+def test_can_trigger_respects_guard_with_context():
+    sm = StateMachine("idle")
+    sm.add_transition(
+        "idle", "running", "start", guard=lambda ctx: ctx.get("ok", False)
+    )
+    assert sm.can_trigger("start", context={"ok": True}) is True
+    assert sm.can_trigger("start", context={"ok": False}) is False
+
+
+# ---------------------------------------------------------------------------
+# Transition dataclass
+# ---------------------------------------------------------------------------
+
+
+def test_transition_dataclass_defaults():
+    t = Transition("a", "b", "go")
+    assert t.from_state == "a"
+    assert t.to_state == "b"
+    assert t.trigger == "go"
+    assert t.guard is None
+    assert t.action is None
